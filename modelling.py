@@ -38,7 +38,6 @@ class WindowLayer(keras.layers.Layer):
     def output_size(self):
         return [self.num_letters, self.num_mixtures, 1]
           
-
 class MixtureLayer(keras.layers.Layer):
     def __init__(self, input_size, num_mixtures, bias = 0):
         self.input_size = input_size
@@ -51,19 +50,25 @@ class MixtureLayer(keras.layers.Layer):
         pi = keras.layers.Dense(self.num_mixtures)(inputs)
         mu1 = keras.layers.Dense(self.num_mixtures)(inputs)
         mu2 = keras.layers.Dense(self.num_mixtures)(inputs)
-        std1 = keras.layers.Dense(self.num_mixtures, activation=tf.exp)(inputs)
-        std2 = keras.layers.Dense(self.num_mixtures, activation=tf.exp)(inputs)
+        std1 = keras.layers.Dense(self.num_mixtures)(inputs)
+        std2 = keras.layers.Dense(self.num_mixtures)(inputs)
         rho = keras.layers.Dense(self.num_mixtures, activation=tf.tanh)(inputs)
         
-        return keras.layers.concatenate([e, tf.nn.softmax(pi * (1. + self.bias)), mu1, mu2, std1, std2, rho])
+        return keras.layers.concatenate([e, tf.nn.softmax(pi * (1. + self.bias)), mu1, mu2, \
+            tf.exp(std1 - self.bias), tf.exp(std2 - self.bias), rho])
 
-def create_model(num_letters, num_mixtures=10, num_layers=3, units=400):
+def create_model(num_letters, window_mixtures=10, output_mixtures=20, num_layers=3, units=400, do_predict=False):
     coordinates = keras.Input(shape=(None, 3))
     sequence = keras.Input(shape=(None, num_letters))
     
-    lstms = [keras.layers.LSTM(units, return_sequences=True) for _ in range(num_layers)]
-    window = WindowLayer(num_mixtures=num_mixtures, sequence=sequence, num_letters=num_letters)
-    mixture = MixtureLayer(input_size=units, num_mixtures=num_mixtures)
+    if do_predict:
+        lstms = [keras.layers.LSTM(units, input_shape=(1, 3), stateful=do_predict , return_sequences=True)]
+        for _ in range(1, num_layers):
+            lstms += [keras.layers.LSTM(units, return_sequences=True, stateful=do_predict)]
+    else:
+        lstms = [keras.layers.LSTM(units, return_sequences=True) for _ in range(num_layers)]
+    window = WindowLayer(num_mixtures=window_mixtures, sequence=sequence, num_letters=num_letters)
+    mixture = MixtureLayer(input_size=units, num_mixtures=output_mixtures, bias=10)
 
     first_output = lstms[0](coordinates)
     window_output = keras.layers.RNN(window, return_sequences=True)(first_output)

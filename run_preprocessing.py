@@ -4,7 +4,10 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import tensorflow as tf
-import json
+import json, pickle
+
+from helpers import get_textline_vectors
+from collections import defaultdict
 
 """ Output 
 format: [[x_1, y_1, e_1], [x_2, y_2, e_2], ..., [x_n, y_n, e_n]]
@@ -13,17 +16,15 @@ format: [[x_1, y_1, e_1], [x_2, y_2, e_2], ..., [x_n, y_n, e_n]]
     e: bool. Whether it is the end of a stroke.
 """
 
-
 flags = tf.flags
 
 FLAGS = flags.FLAGS
 
-## Required parameters
+## Parameters
 flags.DEFINE_string(
     "output_dir", "data/training",
     "The output dir.")
 
-## Optional parameters
 flags.DEFINE_string(
     "data_dir", "data/original",
     "The input data dir. Should contain the .tsv files (or other data files) "
@@ -33,9 +34,6 @@ def get_char_mapping(charset):
     mapping = {c: i+1 for i, c in enumerate(sorted(charset))}
     mapping["<NULL>"] = 0
     return mapping
-
-def get_textline_vectors(textline, char_mapping):
-    return np.array([[char_mapping[c] == i for i in range(len(char_mapping))] for c in textline])
 
 def clean_stroke(points, threshold=1000):
     if points.shape[0] < 3:
@@ -57,8 +55,10 @@ def is_new_line(stroke, last_line, threshold=2000):
 def extract_data_from_xml(file_path, charset):
     root = ET.parse(file_path)
     transcription = root.findall("Transcription")
+    form = root.findall("General")[0].findall("Form")[0] 
+    writer_id = int(html.unescape(form.get("writerID")))
     if not transcription:
-        return [], []
+        return [], [], None
     textlines = [html.unescape(item.get("text")) for item in transcription[0].findall("TextLine")]
     charset |= set("".join(textlines))
 
@@ -81,9 +81,9 @@ def extract_data_from_xml(file_path, charset):
         offsets.append(line)
 
     if len(offsets) == len(textlines):
-        return offsets, textlines
+        return offsets, textlines, writer_id
     else:
-        return [], []
+        return [], [], None
 
 def main():
     charset = set()
@@ -93,15 +93,17 @@ def main():
         for f in files:
             fname, ext = os.path.splitext(f)
             if ext == ".xml":
-                extract_data, extract_textlines = extract_data_from_xml(os.path.join(root, f), charset)
+                extract_data, extract_textlines, _ = extract_data_from_xml(os.path.join(root, f), charset)
                 data += extract_data
-                textlines += extract_textlines
+                textlines  += extract_textlines
     print(charset)
     mapping = get_char_mapping(charset)
     labels = [get_textline_vectors(textline, mapping) for textline in textlines]
     
-    np.save(os.path.join(FLAGS.output_dir, "data"), np.array(data))
-    np.save(os.path.join(FLAGS.output_dir, "labels"), np.array(labels))
+    with open(os.path.join(FLAGS.output_dir, "data.pkl"), "wb") as outfile:
+        pickle.dump(data, outfile)
+    with open(os.path.join(FLAGS.output_dir, "labels.pkl"), "wb") as outfile:
+        pickle.dump(labels, outfile)
     with open(os.path.join(FLAGS.output_dir, "translation.json"), "w") as outfile:
         json.dump(mapping, outfile)
 
