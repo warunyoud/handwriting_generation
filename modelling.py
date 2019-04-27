@@ -57,7 +57,7 @@ class MixtureLayer(keras.layers.Layer):
         return keras.layers.concatenate([e, tf.nn.softmax(pi * (1. + self.bias)), mu1, mu2, \
             tf.exp(std1 - self.bias), tf.exp(std2 - self.bias), rho])
 
-def create_model(num_letters, window_mixtures=10, output_mixtures=20, num_layers=3, units=400, do_predict=False):
+def create_model(num_letters, window_mixtures=10, output_mixtures=20, num_layers=3, units=400, bias=0, do_predict=False):
     coordinates = keras.Input(shape=(None, 3))
     sequence = keras.Input(shape=(None, num_letters))
     
@@ -68,7 +68,7 @@ def create_model(num_letters, window_mixtures=10, output_mixtures=20, num_layers
     else:
         lstms = [keras.layers.LSTM(units, return_sequences=True) for _ in range(num_layers)]
     window = WindowLayer(num_mixtures=window_mixtures, sequence=sequence, num_letters=num_letters)
-    mixture = MixtureLayer(input_size=units, num_mixtures=output_mixtures, bias=10)
+    mixture = MixtureLayer(input_size=units, num_mixtures=output_mixtures, bias=bias)
 
     first_output = lstms[0](coordinates)
     window_output = keras.layers.RNN(window, return_sequences=True)(first_output)
